@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.maxwen.fitness.WeekView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <TextView
+        android:id="@+id/time_period"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:background="?android:attr/colorPrimary"
+        android:gravity="center_vertical"
+        android:layout_gravity="top"
+        android:paddingStart="15dp"
+        android:text="foo bbaaz"
+        android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+        android:textColor="@android:color/white"/>
+
+    <android.support.v4.widget.SwipeRefreshLayout
+        android:id="@+id/refresh_list"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_marginTop="48dp"
+        android:layout_weight="1">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <android.support.v7.widget.RecyclerView
+                android:id="@+id/data_point_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:paddingBottom="72dp"/>
+
+            <TextView
+                android:id="@+id/empty_view"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="@string/error_message"
+                android:visibility="gone"/>
+
+            <android.support.design.widget.FloatingActionButton
+                android:id="@+id/time_period_back"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="start|bottom"
+                android:layout_margin="16dp"
+                android:background="?android:attr/colorAccent"
+                android:clickable="true"
+                app:srcCompat="@drawable/ic_arrow_back_white"/>
+
+            <android.support.design.widget.FloatingActionButton
+                android:id="@+id/time_period_forward"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|bottom"
+                android:layout_margin="16dp"
+                android:background="?android:attr/colorAccent"
+                android:clickable="true"
+                app:srcCompat="@drawable/ic_arrow_forward_white"/>
+        </FrameLayout>
+    </android.support.v4.widget.SwipeRefreshLayout>
+</com.maxwen.fitness.WeekView>

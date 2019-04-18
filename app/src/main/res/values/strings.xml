@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">FitnessTracker</string>
+    <string name="error_message">Failure to access fit data</string>
+</resources>
