@@ -25,7 +25,9 @@ public class WeekViewController extends BaseController {
     }
 
     public void getFitDataForPeriod() {
-        mWeekView.getFitDataForPeriod(mStartTime, mEndTime);
+        if (mWeekView != null) {
+            mWeekView.getFitDataForPeriod(mStartTime, mEndTime);
+        }
     }
 
     public void setTimePeriod(long startTime, long endTime) {

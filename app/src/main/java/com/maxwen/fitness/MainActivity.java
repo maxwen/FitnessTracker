@@ -16,6 +16,7 @@ import com.google.android.gms.fitness.data.DataType;
 
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -83,12 +84,20 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void getThisWeekFitData() {
-        Calendar cal = Calendar.getInstance();
+        Calendar cal = Calendar.getInstance(Locale.GERMAN);
         cal.setTime(new Date());
-        long endTime = cal.getTimeInMillis();
         cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
         long startTime = cal.getTimeInMillis();
+
+        Calendar endCal = Calendar.getInstance(Locale.GERMAN);
+        endCal.setTimeInMillis(startTime);
+        endCal.add(Calendar.DAY_OF_MONTH, 6);
+        endCal.set(Calendar.HOUR_OF_DAY, 23);
+        endCal.set(Calendar.MINUTE, 59);
+        long endTime = endCal.getTimeInMillis();
+
         mWeekController.setTimePeriod(startTime, endTime);
         mWeekController.getFitDataForPeriod();
     }

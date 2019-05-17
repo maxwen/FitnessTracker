@@ -6,6 +6,7 @@ import android.support.annotation.NonNull;
 import android.support.v4.widget.SwipeRefreshLayout;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
+import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -16,6 +17,7 @@ import android.widget.TextView;
 
 import com.google.android.gms.auth.api.signin.GoogleSignIn;
 import com.google.android.gms.fitness.Fitness;
+import com.google.android.gms.fitness.FitnessActivities;
 import com.google.android.gms.fitness.data.Bucket;
 import com.google.android.gms.fitness.data.DataPoint;
 import com.google.android.gms.fitness.data.DataSet;
@@ -31,9 +33,11 @@ import com.google.android.gms.tasks.Task;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -55,6 +59,7 @@ public class WeekView extends FrameLayout {
     private View mBackButton;
     private WeekViewController mController;
     private int mCurrentWeek;
+    SimpleDateFormat formatTime = new SimpleDateFormat("dd.MM.yyyy HH:mm");
 
     public WeekView(@androidx.annotation.NonNull @NonNull Context context, @Nullable @android.support.annotation.Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -113,7 +118,7 @@ public class WeekView extends FrameLayout {
             }
         });
 
-        Calendar cal = Calendar.getInstance();
+        Calendar cal = Calendar.getInstance(Locale.GERMAN);
         cal.setTime(new Date());
         mNowWeek = cal.get(Calendar.WEEK_OF_YEAR);
         mCurrentWeek = mNowWeek;
@@ -122,7 +127,9 @@ public class WeekView extends FrameLayout {
     }
 
     public void getFitDataForPeriod(long startTime, long endTime) {
-        Calendar cal = Calendar.getInstance();
+        Log.d(LOG_TAG, "getFitDataForPeriod start = " + formatTime.format(startTime) + " end = " + formatTime.format(endTime));
+
+        Calendar cal = Calendar.getInstance(Locale.GERMAN);
         cal.setTimeInMillis(startTime);
         mCurrentWeek = cal.get(Calendar.WEEK_OF_YEAR);
 
@@ -132,28 +139,60 @@ public class WeekView extends FrameLayout {
             setButtonVisible(mForwardButton, true).start();
         }
         mRefresh.setEnabled(mCurrentWeek == mNowWeek);
-        getFitData(startTime, endTime);
+        if (false) {
+            getFitData(startTime, endTime);
+        } else {
+            getByActivityBucket(startTime);
+        }
     }
 
     private void getFitDataForWeek(int weekNumber) {
-        Calendar cal = Calendar.getInstance();
+        Calendar cal = Calendar.getInstance(Locale.GERMAN);
         cal.set(Calendar.WEEK_OF_YEAR, weekNumber);
         cal.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY);
         cal.set(Calendar.HOUR_OF_DAY, 0);
+        cal.set(Calendar.MINUTE, 0);
         long startTime = cal.getTimeInMillis();
 
-        cal.add(Calendar.DAY_OF_MONTH, 6);
-        cal.set(Calendar.HOUR_OF_DAY, 23);
-        cal.set(Calendar.MINUTE, 59);
-        long endTime = cal.getTimeInMillis();
+        Calendar endCal = Calendar.getInstance(Locale.GERMAN);
+        endCal.setTimeInMillis(startTime);
+        endCal.add(Calendar.DAY_OF_MONTH, 6);
+        endCal.set(Calendar.HOUR_OF_DAY, 23);
+        endCal.set(Calendar.MINUTE, 59);
+        long endTime = endCal.getTimeInMillis();
 
         mController.setTimePeriod(startTime, endTime);
-        getFitData(startTime, endTime);
+        mDataPoints.clear();
+
+        if (false) {
+            getFitData(startTime, endTime);
+        } else {
+            getByActivityBucket(cal.getTimeInMillis());
+        }
+    }
+
+    private void getByActivityBucket(long startTime) {
+        Calendar dayCal = Calendar.getInstance(Locale.GERMAN);
+        mDataPointsByDay.clear();
+        mDataPoints.clear();
+        for (int i = 0; i < 7; i++) {
+            dayCal.setTimeInMillis(startTime);
+            dayCal.set(Calendar.HOUR_OF_DAY, 23);
+            dayCal.set(Calendar.MINUTE, 59);
+            long endTime = dayCal.getTimeInMillis();
+
+            getFitData2(startTime, endTime);
+
+            dayCal.set(Calendar.HOUR_OF_DAY, 0);
+            dayCal.set(Calendar.MINUTE, 0);
+            dayCal.add(Calendar.DAY_OF_WEEK, 1);
+
+            startTime = dayCal.getTimeInMillis();
+        }
     }
 
     private void getFitData(long startTime, long endTime) {
-        SimpleDateFormat formatTime = new SimpleDateFormat("yyyy-MM-dd HH:mm");
-        SimpleDateFormat formatDate = new SimpleDateFormat("yyyy-MM-dd");
+        SimpleDateFormat formatDate = new SimpleDateFormat("E dd.MM.yyyy");
         Log.d(LOG_TAG, "start = " + formatTime.format(startTime) + " end = " + formatTime.format(endTime));
         mTimePeriod.setText("Week " + String.valueOf(mCurrentWeek) + " - " + formatDate.format(startTime) + " - " + formatDate.format(endTime));
 
@@ -162,9 +201,9 @@ public class WeekView extends FrameLayout {
                 .aggregate(DataType.TYPE_DISTANCE_DELTA, DataType.AGGREGATE_DISTANCE_DELTA)
                 .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
                 .bucketByTime(1, TimeUnit.DAYS)
+                .enableServerQueries()
                 .build();
 
-        mDataPoints.clear();
         Fitness.getHistoryClient(getContext(), GoogleSignIn.getLastSignedInAccount(getContext()))
                 .readData(readRequest)
                 .addOnSuccessListener(new OnSuccessListener<DataReadResponse>() {
@@ -199,8 +238,60 @@ public class WeekView extends FrameLayout {
                 });
     }
 
+
+    private void getFitData2(long startTime, long endTime) {
+        SimpleDateFormat formatTime = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+        SimpleDateFormat formatDate = new SimpleDateFormat("E dd.MM.yyyy");
+        Log.d(LOG_TAG, "getFitData2 start = " + formatTime.format(startTime) + " end = " + formatTime.format(endTime));
+        mTimePeriod.setText("Week " + String.valueOf(mCurrentWeek) + " - " + formatDate.format(startTime) + " - " + formatDate.format(endTime));
+
+        DataReadRequest readRequest = new DataReadRequest.Builder()
+                .aggregate(DataType.TYPE_ACTIVITY_SEGMENT, DataType.AGGREGATE_ACTIVITY_SUMMARY)
+                .aggregate(DataType.TYPE_STEP_COUNT_DELTA, DataType.AGGREGATE_STEP_COUNT_DELTA)
+                .aggregate(DataType.TYPE_DISTANCE_DELTA, DataType.AGGREGATE_DISTANCE_DELTA)
+                .bucketByActivityType(1, TimeUnit.MINUTES)
+                .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
+                .enableServerQueries()
+                .build();
+
+        Fitness.getHistoryClient(getContext(), GoogleSignIn.getLastSignedInAccount(getContext()))
+                .readData(readRequest)
+                .addOnSuccessListener(new OnSuccessListener<DataReadResponse>() {
+                    @Override
+                    public void onSuccess(DataReadResponse dataReadResponse) {
+                        Log.d(LOG_TAG, "onSuccess()");
+                        mEmptyView.setVisibility(View.GONE);
+                        mList.setVisibility(View.VISIBLE);
+                        for (Bucket b : dataReadResponse.getBuckets()) {
+                            for (DataSet d : b.getDataSets()) {
+                                loadDataSet2(d);
+                            }
+                        }
+                        Collections.sort(mDataPoints);
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.e(LOG_TAG, "onFailure()", e);
+                        mRefresh.setRefreshing(false);
+                        mEmptyView.setVisibility(View.VISIBLE);
+                        mList.setVisibility(View.GONE);
+                    }
+                })
+                .addOnCompleteListener(new OnCompleteListener<DataReadResponse>() {
+                    @Override
+                    public void onComplete(@NonNull Task<DataReadResponse> task) {
+                        Log.d(LOG_TAG, "onComplete()");
+                        mAdapter.notifyDataSetChanged();
+                        mRefresh.setRefreshing(false);
+                    }
+                });
+    }
+
+
     private void loadDataSet(DataSet dataSet) {
-        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+        SimpleDateFormat format = new SimpleDateFormat("dd.MM.yyyy HH:mm");
 
         for (DataPoint dp : dataSet.getDataPoints()) {
             long dataPointTime = dp.getEndTime(TimeUnit.DAYS);
@@ -209,20 +300,22 @@ public class WeekView extends FrameLayout {
                 DataPointItem item = new DataPointItem();
                 item.mEndTime = dp.getEndTime(TimeUnit.MILLISECONDS);
                 item.mStartTime = dp.getStartTime(TimeUnit.MILLISECONDS);
+                Calendar dayCal = Calendar.getInstance(Locale.GERMAN);
+                dayCal.setTimeInMillis(item.mStartTime);
+                item.mDay = dayCal.get(Calendar.DAY_OF_WEEK);
                 mDataPointsByDay.put(dataPointTime, item);
                 mDataPoints.add(item);
             }
             for (Field field : dp.getDataType().getFields()) {
+                DataPointItem item = mDataPointsByDay.get(dataPointTime);
+                if (item == null) {
+                    continue;
+                }
                 if (dp.getDataType().getName().equals(DataType.TYPE_DISTANCE_DELTA.getName())) {
                     Log.i(LOG_TAG, String.format("%.2f", dp.getValue(field).asFloat() / 1000) + " km");
-
-                    DataPointItem item = mDataPointsByDay.get(dataPointTime);
                     item.mDistance = dp.getValue(field).asFloat();
-
                 } else if (dp.getDataType().getName().equals(DataType.TYPE_STEP_COUNT_DELTA.getName())) {
                     Log.i(LOG_TAG, dp.getValue(field) + " steps");
-
-                    DataPointItem item = mDataPointsByDay.get(dataPointTime);
                     item.mSteps = dp.getValue(field).asInt();
                 }
             }
@@ -231,11 +324,83 @@ public class WeekView extends FrameLayout {
         }
     }
 
-    private class DataPointItem {
+    private void loadDataSet2(DataSet dataSet) {
+        SimpleDateFormat format = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+
+        for (DataPoint dp : dataSet.getDataPoints()) {
+            long dataPointTime = dp.getEndTime(TimeUnit.MINUTES);
+            Log.i(LOG_TAG, format.format(dp.getStartTime(TimeUnit.MILLISECONDS)) + " - " + format.format(dp.getEndTime(TimeUnit.MILLISECONDS)));
+            if (lastTime == 0 || dataPointTime != lastTime) {
+                DataPointItem item = new DataPointItem();
+                item.mEndTime = dp.getEndTime(TimeUnit.MILLISECONDS);
+                item.mStartTime = dp.getStartTime(TimeUnit.MILLISECONDS);
+                Calendar dayCal = Calendar.getInstance(Locale.GERMAN);
+                dayCal.setTimeInMillis(item.mStartTime);
+                item.mDay = dayCal.get(Calendar.DAY_OF_WEEK);
+                mDataPointsByDay.put(dataPointTime, item);
+            }
+            DataPointItem item = mDataPointsByDay.get(dataPointTime);
+            if (item == null) {
+                continue;
+            }
+            for (Field field : dp.getDataType().getFields()) {
+                if (dp.getDataType().getName().equals(DataType.TYPE_DISTANCE_DELTA.getName())) {
+                    Log.i(LOG_TAG, String.format("%.2f", dp.getValue(field).asFloat() / 1000) + " km");
+                    item.mDistance = dp.getValue(field).asFloat();
+                } else if (dp.getDataType().getName().equals(DataType.TYPE_STEP_COUNT_DELTA.getName())) {
+                    Log.i(LOG_TAG, dp.getValue(field) + " steps");
+                    item.mSteps = dp.getValue(field).asInt();
+                } else {
+                    if (dp.getDataType().getName().equals("com.google.activity.summary")) {
+                        if (isCountedActivity(dp.getValue(field).asActivity())) {
+                            Log.i(LOG_TAG, dp.getValue(field).asActivity());
+                            item.mType = dp.getValue(field).asActivity();
+                        }
+                    }
+                }
+            }
+            if (item.mType != null && item.mSteps != -1 && item.mDistance != -1) {
+                if (!mDataPoints.contains(item)) {
+                    mDataPoints.add(item);
+                }
+            }
+
+            lastTime = dataPointTime;
+        }
+    }
+
+    private boolean isCountedActivity(String activityType) {
+        switch (activityType) {
+            case FitnessActivities.WALKING:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private class DataPointItem implements Comparable<DataPointItem> {
         long mStartTime;
         long mEndTime;
-        int mSteps;
-        float mDistance;
+        int mSteps = -1;
+        float mDistance = -1;
+        String mType;
+        int mDay;
+
+        @Override
+        public int compareTo(@NonNull DataPointItem o) {
+            if (mStartTime > o.mStartTime) {
+                return 1;
+            }
+            return -1;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (o == null || !(o instanceof DataPointItem)) {
+                return false;
+            }
+            return mDay == ((DataPointItem) o).mDay;
+        }
     }
 
     private class DataPointViewHolder extends RecyclerView.ViewHolder {
@@ -244,6 +409,7 @@ public class WeekView extends FrameLayout {
         TextView mDistance;
         long mStartTime;
         View mView;
+        TextView mType;
 
         public DataPointViewHolder(View v) {
             super(v);
@@ -251,10 +417,11 @@ public class WeekView extends FrameLayout {
             mDate = v.findViewById(R.id.date);
             mSteps = v.findViewById(R.id.steps);
             mDistance = v.findViewById(R.id.distance);
+            mType = v.findViewById(R.id.type);
         }
 
         public void setData(final DataPointItem item) {
-            SimpleDateFormat format = new SimpleDateFormat("E");
+            SimpleDateFormat format = new SimpleDateFormat("E dd.MM.yyyy ");
             SimpleDateFormat format1 = new SimpleDateFormat("HH:mm");
             mStartTime = item.mStartTime;
 
@@ -270,7 +437,10 @@ public class WeekView extends FrameLayout {
                 mDistance.setVisibility(View.VISIBLE);
                 mDistance.setText(String.format("%.2f", item.mDistance / 1000) + " km");
             }
-
+            if (!TextUtils.isEmpty(item.mType)) {
+                mType.setVisibility(View.VISIBLE);
+                mType.setText(item.mType);
+            }
             mView.setOnClickListener(new OnClickListener() {
                 @Override
                 public void onClick(View v) {
