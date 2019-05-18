@@ -1,6 +1,7 @@
 package com.maxwen.fitness;
 
 import android.content.Context;
+import android.location.Location;
 import android.support.annotation.NonNull;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
@@ -43,6 +44,7 @@ public class DayView extends FrameLayout {
 
     private static final String LOG_TAG = "DayView";
     public static final int MIN_ACTIVITY_TIME = 5 * 60 * 1000;
+    public static final int MIN_ACTIVITY_DISTANCE = 300;
     public static final int MAX_ACTIVITY_PAUSE = 15 * 60 * 1000;
     private long lastTime;
     private RecyclerView mList;
@@ -58,6 +60,9 @@ public class DayView extends FrameLayout {
     private TextView mSumSteps;
     private TextView mSumDistance;
     private DataPointItem mLastDataPointItem;
+    SimpleDateFormat formatTime = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+    SimpleDateFormat formatDate = new SimpleDateFormat("E dd.MM.yyyy");
+    SimpleDateFormat formatTimeSecs = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
 
     public DayView(@androidx.annotation.NonNull @NonNull Context context, @Nullable @android.support.annotation.Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -100,8 +105,6 @@ public class DayView extends FrameLayout {
     }
 
     private void getFitData(long startTime, long endTime) {
-        SimpleDateFormat formatTime = new SimpleDateFormat("dd.MM.yyyy HH:mm");
-        SimpleDateFormat formatDate = new SimpleDateFormat("E dd.MM.yyyy");
         Log.d(LOG_TAG, "start = " + formatTime.format(startTime) + " end = " + formatTime.format(endTime));
         mTimePeriod.setText("" + formatDate.format(startTime));
 
@@ -122,7 +125,7 @@ public class DayView extends FrameLayout {
                 .addOnSuccessListener(new OnSuccessListener<DataReadResponse>() {
                     @Override
                     public void onSuccess(DataReadResponse dataReadResponse) {
-                        Log.d(LOG_TAG, "onSuccess()");
+                        //Log.d(LOG_TAG, "onSuccess()");
                         mEmptyView.setVisibility(View.GONE);
                         mList.setVisibility(View.VISIBLE);
                         for (Bucket b : dataReadResponse.getBuckets()) {
@@ -132,7 +135,8 @@ public class DayView extends FrameLayout {
                         }
                         List<DataPointItem> l = new ArrayList<>(mDataPoints);
                         for (DataPointItem d : l) {
-                            if (d.mEndTime - d.mStartTime < MIN_ACTIVITY_TIME) {
+                            if (d.mEndTime - d.mStartTime < MIN_ACTIVITY_TIME ||
+                                    d.mDistance < MIN_ACTIVITY_DISTANCE) {
                                 mDataPoints.remove(d);
                             }
                         }
@@ -150,18 +154,59 @@ public class DayView extends FrameLayout {
                 .addOnCompleteListener(new OnCompleteListener<DataReadResponse>() {
                     @Override
                     public void onComplete(@NonNull Task<DataReadResponse> task) {
-                        Log.d(LOG_TAG, "onComplete()");
+                        //Log.d(LOG_TAG, "onComplete()");
                         mAdapter.notifyDataSetChanged();
                     }
                 });
     }
 
-    private void loadDataSet(DataSet dataSet) {
-        SimpleDateFormat format = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+    private void getFitData2(long startTime, long endTime) {
+        Log.d(LOG_TAG, "start = " + formatTime.format(startTime) + " end = " + formatTime.format(endTime));
 
+        DataReadRequest readRequest = new DataReadRequest.Builder()
+                .setTimeRange(startTime, endTime, TimeUnit.MILLISECONDS)
+                .enableServerQueries()
+                .read(DataType.TYPE_HEART_RATE_BPM)
+                .build();
+
+        Fitness.getHistoryClient(getContext(), GoogleSignIn.getLastSignedInAccount(getContext()))
+                .readData(readRequest)
+                .addOnSuccessListener(new OnSuccessListener<DataReadResponse>() {
+                    @Override
+                    public void onSuccess(DataReadResponse dataReadResponse) {
+                        Log.d(LOG_TAG, "onSuccess()");
+                        List<DataSet> sets = dataReadResponse.getDataSets();
+                        for (DataSet s : sets) {
+                            for (DataPoint dp : s.getDataPoints()) {
+                                Log.i(LOG_TAG, formatTimeSecs.format(dp.getStartTime(TimeUnit.MILLISECONDS)) + " - " + formatTimeSecs.format(dp.getEndTime(TimeUnit.MILLISECONDS)));
+                                Log.i(LOG_TAG, "" + dp.getValue(dp.getDataType().getFields().get(0)).asFloat());
+
+                            }
+                        }
+                        //List<Location> locations = locationsFromDataSet(dataReadResponse.getDataSet(session, DataType.TYPE_LOCATION_SAMPLE).get(0));
+                        //Log.i(LOG_TAG, "" + session);
+                    }
+                })
+                .addOnFailureListener(new OnFailureListener() {
+                    @Override
+                    public void onFailure(@NonNull Exception e) {
+                        Log.e(LOG_TAG, "onFailure()", e);
+
+                    }
+                })
+                .addOnCompleteListener(new OnCompleteListener<DataReadResponse>() {
+                    @Override
+                    public void onComplete(@NonNull Task<DataReadResponse> task) {
+                        Log.d(LOG_TAG, "onComplete()");
+                    }
+                });
+
+    }
+
+    private void loadDataSet(DataSet dataSet) {
         for (DataPoint dp : dataSet.getDataPoints()) {
             long dataPointTime = dp.getStartTime(TimeUnit.MINUTES);
-            Log.i(LOG_TAG, format.format(dp.getStartTime(TimeUnit.MILLISECONDS)) + " - " + format.format(dp.getEndTime(TimeUnit.MILLISECONDS)));
+            //Log.i(LOG_TAG, formatTime.format(dp.getStartTime(TimeUnit.MILLISECONDS)) + " - " + formatTime.format(dp.getEndTime(TimeUnit.MILLISECONDS)));
             if (lastTime == 0 || dataPointTime != lastTime) {
                 DataPointItem item = new DataPointItem();
                 item.mEndTime = dp.getEndTime(TimeUnit.MILLISECONDS);
@@ -172,25 +217,31 @@ public class DayView extends FrameLayout {
             if (item == null) {
                 continue;
             }
+            boolean typeDone = false;
             for (Field field : dp.getDataType().getFields()) {
                 if (dp.getDataType().getName().equals(DataType.TYPE_DISTANCE_DELTA.getName())) {
-                    Log.i(LOG_TAG, String.format("%.2f", dp.getValue(field).asFloat() / 1000) + " km");
+                    //Log.i(LOG_TAG, String.format("%.2f", dp.getValue(field).asFloat() / 1000) + " km");
                     item.mDistance = dp.getValue(field).asFloat();
                 } else if (dp.getDataType().getName().equals(DataType.TYPE_STEP_COUNT_DELTA.getName())) {
-                    Log.i(LOG_TAG, dp.getValue(field) + " steps");
+                    //Log.i(LOG_TAG, dp.getValue(field) + " steps");
                     item.mSteps = dp.getValue(field).asInt();
                 } else if (dp.getDataType().getName().equals("com.google.activity.summary")) {
-                    if (item.mType == null) {
-                        if (isCountedActivity(dp.getValue(field).asActivity())) {
-                            Log.i(LOG_TAG, dp.getValue(field).asActivity());
-                            item.mType = dp.getValue(field).asActivity();
-                        }
+                    if (typeDone) {
+                        continue;
                     }
+                    //Log.i(LOG_TAG, dp.getValue(field).asActivity());
+                    if (isCountedActivity(dp.getValue(field).asActivity())) {
+                        item.mType = dp.getValue(field).asActivity();
+                    }
+                    typeDone = true;
+                } else {
+                    //Log.i(LOG_TAG, dp.getDataType().getName() + " " + dp.getValue(field).toString());
                 }
             }
             if (item.mSteps != -1 && item.mDistance != -1 && item.mType != null) {
                 if (mLastDataPointItem != null) {
-                    if (dp.getStartTime(TimeUnit.MILLISECONDS) - mLastDataPointItem.mEndTime < MAX_ACTIVITY_PAUSE) {
+                    if (mLastDataPointItem.mType == item.mType &&
+                            dp.getStartTime(TimeUnit.MILLISECONDS) - mLastDataPointItem.mEndTime < MAX_ACTIVITY_PAUSE) {
                         mLastDataPointItem.mEndTime = dp.getEndTime(TimeUnit.MILLISECONDS);
                         mLastDataPointItem.mSteps += item.mSteps;
                         mLastDataPointItem.mDistance += item.mDistance;
@@ -211,6 +262,8 @@ public class DayView extends FrameLayout {
     private boolean isCountedActivity(String activityType) {
         switch (activityType) {
             case FitnessActivities.WALKING:
+            case FitnessActivities.RUNNING:
+            case FitnessActivities.BIKING:
                 return true;
             default:
                 return false;
@@ -226,8 +279,29 @@ public class DayView extends FrameLayout {
             sumDistance += item.mDistance;
         }
 
-        mSumSteps.setText("Steps: " + sumSteps);
-        mSumDistance.setText("Distance: " + String.format("%.2f", sumDistance / 1000) + " km");
+        mSumSteps.setText(String.valueOf(sumSteps));
+        mSumDistance.setText(String.format("%.2f", sumDistance / 1000) + " km");
+    }
+
+
+    private List<Location> locationsFromDataSet(DataSet distanceDataSet) {
+        List<Location> locations = new ArrayList<>();
+        for (DataPoint dataPoint : distanceDataSet.getDataPoints()) {
+            float lat = dataPoint.getValue(Field.FIELD_LATITUDE).asFloat();
+            float lng = dataPoint.getValue(Field.FIELD_LONGITUDE).asFloat();
+            long timestamp = dataPoint.getTimestamp(TimeUnit.MILLISECONDS);
+            float accuracy = dataPoint.getValue(Field.FIELD_ACCURACY).asFloat();
+            float altitude = dataPoint.getValue(Field.FIELD_ALTITUDE).asFloat();
+
+            Location location = new Location("");
+            location.setLatitude(lat);
+            location.setLongitude(lng);
+            location.setTime(timestamp);
+            location.setAccuracy(accuracy);
+            location.setAltitude(altitude);
+            locations.add(location);
+        }
+        return locations;
     }
 
     private class DataPointItem implements Comparable<DataPointItem> {
@@ -284,6 +358,13 @@ public class DayView extends FrameLayout {
                 mType.setVisibility(View.VISIBLE);
                 mType.setText(item.mType);
             }
+
+            mView.setOnClickListener(new OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    getFitData2(item.mStartTime, item.mEndTime);
+                }
+            });
         }
     }
 

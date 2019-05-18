@@ -60,6 +60,9 @@ public class WeekView extends FrameLayout {
     private WeekViewController mController;
     private int mCurrentWeek;
     SimpleDateFormat formatTime = new SimpleDateFormat("dd.MM.yyyy HH:mm");
+    SimpleDateFormat formatDate = new SimpleDateFormat("E dd.MM.yyyy");
+    private TextView mSumSteps;
+    private TextView mSumDistance;
 
     public WeekView(@androidx.annotation.NonNull @NonNull Context context, @Nullable @android.support.annotation.Nullable AttributeSet attrs) {
         super(context, attrs);
@@ -73,6 +76,8 @@ public class WeekView extends FrameLayout {
     protected void onFinishInflate() {
         super.onFinishInflate();
 
+        mSumDistance = findViewById(R.id.sum_distance);
+        mSumSteps = findViewById(R.id.sum_steps);
         mList = findViewById(R.id.data_point_list);
         mAdapter = new DataPointAdapter();
         mList.setAdapter(mAdapter);
@@ -172,6 +177,8 @@ public class WeekView extends FrameLayout {
     }
 
     private void getByActivityBucket(long startTime) {
+        long s = startTime;
+        long endTime = 0;
         Calendar dayCal = Calendar.getInstance(Locale.GERMAN);
         mDataPointsByDay.clear();
         mDataPoints.clear();
@@ -179,7 +186,7 @@ public class WeekView extends FrameLayout {
             dayCal.setTimeInMillis(startTime);
             dayCal.set(Calendar.HOUR_OF_DAY, 23);
             dayCal.set(Calendar.MINUTE, 59);
-            long endTime = dayCal.getTimeInMillis();
+            endTime = dayCal.getTimeInMillis();
 
             getFitData2(startTime, endTime);
 
@@ -189,12 +196,13 @@ public class WeekView extends FrameLayout {
 
             startTime = dayCal.getTimeInMillis();
         }
+
+        mTimePeriod.setText(formatDate.format(s) + " - " + formatDate.format(endTime));
     }
 
     private void getFitData(long startTime, long endTime) {
-        SimpleDateFormat formatDate = new SimpleDateFormat("E dd.MM.yyyy");
         Log.d(LOG_TAG, "start = " + formatTime.format(startTime) + " end = " + formatTime.format(endTime));
-        mTimePeriod.setText("Week " + String.valueOf(mCurrentWeek) + " - " + formatDate.format(startTime) + " - " + formatDate.format(endTime));
+        mTimePeriod.setText(formatDate.format(startTime) + " - " + formatDate.format(endTime));
 
         DataReadRequest readRequest = new DataReadRequest.Builder()
                 .aggregate(DataType.TYPE_STEP_COUNT_DELTA, DataType.AGGREGATE_STEP_COUNT_DELTA)
@@ -217,6 +225,7 @@ public class WeekView extends FrameLayout {
                                 loadDataSet(d);
                             }
                         }
+                        createSummary();
                     }
                 })
                 .addOnFailureListener(new OnFailureListener() {
@@ -240,10 +249,7 @@ public class WeekView extends FrameLayout {
 
 
     private void getFitData2(long startTime, long endTime) {
-        SimpleDateFormat formatTime = new SimpleDateFormat("dd.MM.yyyy HH:mm");
-        SimpleDateFormat formatDate = new SimpleDateFormat("E dd.MM.yyyy");
         Log.d(LOG_TAG, "getFitData2 start = " + formatTime.format(startTime) + " end = " + formatTime.format(endTime));
-        mTimePeriod.setText("Week " + String.valueOf(mCurrentWeek) + " - " + formatDate.format(startTime) + " - " + formatDate.format(endTime));
 
         DataReadRequest readRequest = new DataReadRequest.Builder()
                 .aggregate(DataType.TYPE_ACTIVITY_SEGMENT, DataType.AGGREGATE_ACTIVITY_SUMMARY)
@@ -268,6 +274,7 @@ public class WeekView extends FrameLayout {
                             }
                         }
                         Collections.sort(mDataPoints);
+                        createSummary();
                     }
                 })
                 .addOnFailureListener(new OnFailureListener() {
@@ -343,6 +350,7 @@ public class WeekView extends FrameLayout {
             if (item == null) {
                 continue;
             }
+            boolean typeDone = false;
             for (Field field : dp.getDataType().getFields()) {
                 if (dp.getDataType().getName().equals(DataType.TYPE_DISTANCE_DELTA.getName())) {
                     Log.i(LOG_TAG, String.format("%.2f", dp.getValue(field).asFloat() / 1000) + " km");
@@ -350,17 +358,27 @@ public class WeekView extends FrameLayout {
                 } else if (dp.getDataType().getName().equals(DataType.TYPE_STEP_COUNT_DELTA.getName())) {
                     Log.i(LOG_TAG, dp.getValue(field) + " steps");
                     item.mSteps = dp.getValue(field).asInt();
-                } else {
-                    if (dp.getDataType().getName().equals("com.google.activity.summary")) {
-                        if (isCountedActivity(dp.getValue(field).asActivity())) {
-                            Log.i(LOG_TAG, dp.getValue(field).asActivity());
-                            item.mType = dp.getValue(field).asActivity();
-                        }
+                } else if (dp.getDataType().getName().equals("com.google.activity.summary")) {
+                    if (typeDone) {
+                        continue;
                     }
+                    Log.i(LOG_TAG, dp.getValue(field).asActivity());
+                    if (isCountedActivity(dp.getValue(field).asActivity())) {
+                        item.mType = dp.getValue(field).asActivity();
+                    }
+                    typeDone = true;
                 }
             }
             if (item.mType != null && item.mSteps != -1 && item.mDistance != -1) {
-                if (!mDataPoints.contains(item)) {
+                int idx = mDataPoints.indexOf(item);
+                if (idx != -1) {
+                    DataPointItem d = mDataPoints.get(idx);
+                    d.mStartTime = item.mStartTime;
+                    d.mEndTime = item.mEndTime;
+                    d.mDistance = item.mDistance;
+                    d.mSteps = item.mSteps;
+                    d.mType = item.mType;
+                } else {
                     mDataPoints.add(item);
                 }
             }
@@ -369,9 +387,25 @@ public class WeekView extends FrameLayout {
         }
     }
 
+
+    private void createSummary() {
+        int sumSteps = 0;
+        float sumDistance = 0f;
+
+        for (DataPointItem item : mDataPoints) {
+            sumSteps += item.mSteps;
+            sumDistance += item.mDistance;
+        }
+
+        mSumSteps.setText(String.valueOf(sumSteps));
+        mSumDistance.setText(String.format("%.2f", sumDistance / 1000) + " km");
+    }
+
     private boolean isCountedActivity(String activityType) {
         switch (activityType) {
             case FitnessActivities.WALKING:
+            case FitnessActivities.RUNNING:
+            case FitnessActivities.BIKING:
                 return true;
             default:
                 return false;
@@ -399,7 +433,7 @@ public class WeekView extends FrameLayout {
             if (o == null || !(o instanceof DataPointItem)) {
                 return false;
             }
-            return mDay == ((DataPointItem) o).mDay;
+            return mDay == ((DataPointItem) o).mDay && mType == ((DataPointItem) o).mType;
         }
     }
 
